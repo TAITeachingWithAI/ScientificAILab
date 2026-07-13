@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Streamlit
+.streamlit/
+
+# Environment variables
+.env
+
+# Streamlit secrets
+secrets.toml
+
+# macOS
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.venv/
