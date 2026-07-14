@@ -49,5 +49,6 @@ else:
 
     home = st.Page("views/Home.py", title="Home", icon="🔬", default=True)
     teacher = st.Page("views/Teacher.py", title="Teacher", icon="👩‍🏫", url_path="Teacher")
+    guide = st.Page("views/Guide.py", title="Teacher Guide", icon="📖", url_path="Guide")
     student = st.Page("views/Student.py", title="Student Laboratory", icon="🧪", url_path="Student")
-    st.navigation([home, teacher, student]).run()
+    st.navigation([home, teacher, guide, student]).run()
