@@ -110,17 +110,25 @@ class BaseScenarioStore:
         return files
 
     def list_builtin(self):
-        """Returns a list of {'id', 'label'} for the teacher's menu."""
+        """
+        Returns a list of {'id', 'label'} for the teacher's menu.
+
+        The label is the planet name only (never the sample identity), because
+        the Teacher page is public — showing the answer here would let students
+        read it. The confidential answers live in ANSWER_KEY.md.
+        """
         items = []
         for path in self._builtin_files():
             try:
                 investigation = read_docx(str(path))
             except Exception:
                 continue
+            planet = investigation.get("planet", {}) or {}
+            label = planet.get("Name") or path.stem
             items.append(
                 {
                     "id": BUILTIN_PREFIX + path.stem.lower(),
-                    "label": _scenario_label(investigation, path.stem),
+                    "label": label,
                 }
             )
         return items
