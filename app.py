@@ -13,6 +13,8 @@ Version 0.1
 Main application / navigation controller.
 """
 
+import os
+
 import streamlit as st
 
 st.set_page_config(
@@ -20,6 +22,15 @@ st.set_page_config(
     page_icon="🔬",
     layout="wide",
 )
+
+# On Streamlit Community Cloud there is no .env file; configuration comes from
+# the app's Secrets. Mirror them into environment variables so the framework-
+# free modules (which read os.getenv) work both locally (.env) and deployed.
+try:
+    for _key, _value in st.secrets.items():
+        os.environ.setdefault(_key, str(_value))
+except Exception:
+    pass
 
 # Student links carry ?lab=<id>. In that case we show ONLY the chat page with
 # the navigation hidden — the Teacher page is not even registered, so students
