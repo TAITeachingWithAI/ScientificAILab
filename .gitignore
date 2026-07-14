@@ -5,6 +5,9 @@ __pycache__/
 # Streamlit
 .streamlit/
 
+# Uploaded scenarios (local store)
+data/
+
 # Environment variables
 .env
 
