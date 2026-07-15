@@ -1,5 +1,8 @@
-streamlit
-python-docx
-openai
-python-dotenv
-boto3
+# Pinned to the exact versions the app was built and tested with, so it keeps
+# building the same way over time. To upgrade, bump a version deliberately,
+# run the app locally, confirm it works, then push.
+streamlit==1.59.2
+python-docx==1.2.0
+openai==2.45.0
+python-dotenv==1.2.2
+boto3==1.43.47
