@@ -11,17 +11,15 @@ llm.py
 
 Provider-agnostic connector for the Scientific AI Laboratory.
 
-This module knows NOTHING about Streamlit. It receives the investigation
-dictionary, the student's experiment and (optionally) the previous
-conversation as plain arguments, and returns only the laboratory
-technician's text reply.
+Knows NOTHING about Streamlit. Two public entry points share one engine:
+  - run_experiment(...)  -> the chemistry lab (hidden-dossier simulation)
+  - chat(...)            -> the generic tutors (Emmy, and future tutors)
 
 ------------------------------------------------------------------
 Choosing a provider
 ------------------------------------------------------------------
 All supported providers speak the OpenAI-compatible chat API, so a single
-`openai` client library talks to every one of them. You only change the
-base URL, the API key and the model name.
+`openai` client library talks to every one of them.
 
     LAB_PROVIDER=groq        # Groq       -> FREE tier (default)
     LAB_PROVIDER=gemini      # Gemini     -> free tier (region-restricted)
@@ -35,17 +33,10 @@ base URL, the API key and the model name.
 ------------------------------------------------------------------
 Staying inside free limits (important for a public, shared key)
 ------------------------------------------------------------------
-Free tiers cap tokens-per-minute and tokens-per-day, and one shared key is
-used by everyone. Three settings keep the app inside those limits:
-
     LAB_MAX_TOKENS=700       # cap the length of each AI reply
-    LAB_HISTORY_TURNS=6      # only resend the last N experiments (not the whole session)
+    LAB_HISTORY_TURNS=6      # only resend the last N turns (not the whole session)
     LAB_FALLBACKS=groq:llama-3.1-8b-instant
-                             # if the primary model is rate-limited, try these next.
-                             # Groq limits are PER MODEL, so falling back to another
-                             # Groq model gives a fresh daily budget on the same key.
-                             # Keep to plain instruct models — reasoning models
-                             # (gpt-oss, qwen3) leak the answer / dump reasoning.
+                             # if the primary model errors/rate-limits, try these next.
 """
 
 import os
@@ -64,9 +55,8 @@ load_dotenv()
 # ------------------------------------------------------------------
 # Provider registry
 # ------------------------------------------------------------------
-# NOTE: model names change over time. These are reasonable defaults for a
-# free classroom setup, but check each provider's current model list and
-# adjust LAB_MODEL / LAB_FALLBACKS in .env if one is renamed or retired.
+# NOTE: model names change over time. Check each provider's current model list
+# and adjust LAB_MODEL / LAB_FALLBACKS in .env if one is renamed or retired.
 PROVIDERS = {
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
@@ -104,25 +94,12 @@ PROVIDERS = {
 }
 
 
-# Read all configuration in ONE place, so the whole app is reconfigured by
-# editing .env only.
+# Read all configuration in ONE place.
 PROVIDER = os.getenv("LAB_PROVIDER", "groq").strip().lower()
 MODEL = os.getenv("LAB_MODEL", "").strip()  # empty -> use the provider default
-
-# Cap the length of each reply (protects the shared token budget).
 MAX_TOKENS = int(os.getenv("LAB_MAX_TOKENS", "700"))
-
-# How many past experiments (user+assistant pairs) to resend for consistency.
-# Only the last N are sent, so token use per request doesn't grow without bound.
 HISTORY_TURNS = int(os.getenv("LAB_HISTORY_TURNS", "6"))
-
-# Ordered fallbacks tried when the primary model errors or is rate-limited.
-# Comma-separated "provider:model" entries. Default: two more Groq models on
-# the same key, each with its own separate free daily budget.
-FALLBACKS = os.getenv(
-    "LAB_FALLBACKS",
-    "groq:llama-3.1-8b-instant",
-)
+FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:llama-3.1-8b-instant")
 
 
 class LabConfigError(RuntimeError):
@@ -139,29 +116,18 @@ def _provider_config():
 
 
 def is_configured():
-    """
-    True if the primary provider has everything it needs to run.
-
-    Lets the UI show a friendly setup hint instead of crashing. Ollama runs
-    locally and needs no key.
-    """
+    """True if the primary provider has everything it needs to run."""
     try:
         cfg = _provider_config()
     except LabConfigError:
         return False
-
     if PROVIDER == "ollama":
         return True
-
     return bool(os.getenv(cfg["api_key_env"]))
 
 
 def _attempt_chain():
-    """
-    The ordered list of (provider, model) attempts: the primary first, then
-    each configured fallback. Model ids may contain ':' free-tag suffixes and
-    '/' vendor prefixes, so we split provider/model on the FIRST ':' only.
-    """
+    """Ordered (provider, model) attempts: the primary first, then fallbacks."""
     primary_cfg = PROVIDERS.get(PROVIDER)
     chain = []
     if primary_cfg:
@@ -171,7 +137,7 @@ def _attempt_chain():
         entry = entry.strip()
         if not entry or ":" not in entry:
             continue
-        provider, model = entry.split(":", 1)
+        provider, model = entry.split(":", 1)  # split on FIRST ':' (models have '/' and ':')
         provider = provider.strip().lower()
         model = model.strip()
         if provider in PROVIDERS:
@@ -189,45 +155,29 @@ def _client_for(provider):
     return OpenAI(api_key=api_key, base_url=cfg["base_url"])
 
 
-def run_experiment(investigation, experiment, history=None):
+def _complete(system_prompt, message, history=None, max_tokens=None, history_turns=None):
     """
-    Simulate one experiment and return only the technician's reply.
+    Core completion with provider fallback. Shared by run_experiment and chat.
 
-    Tries the primary model first; on any error (including a rate-limit 429)
-    it falls back to the next configured model, so a shared free key hitting
-    its cap degrades gracefully instead of failing.
-
-    Parameters
-    ----------
-    investigation : dict
-        The parsed dossier.
-    experiment : str
-        The student's experiment request, in natural language.
-    history : list[dict] | None
-        Previous turns as OpenAI-style messages. Only the last
-        HISTORY_TURNS pairs are resent (keeps token use bounded).
-
-    Returns
-    -------
-    str
-        The laboratory technician's response.
+    Tries the primary model first; on any error (including a 429 rate-limit) it
+    falls back to the next configured model, so a shared free key hitting its
+    cap degrades gracefully instead of failing.
     """
-    system_prompt = build_system_prompt(investigation)
+    cap = MAX_TOKENS if max_tokens is None else max_tokens
+    turns = HISTORY_TURNS if history_turns is None else history_turns
 
     # Keep only the most recent turns to bound token use per request.
     trimmed = history or []
-    if HISTORY_TURNS > 0 and len(trimmed) > 2 * HISTORY_TURNS:
-        trimmed = trimmed[-2 * HISTORY_TURNS:]
+    if turns > 0 and len(trimmed) > 2 * turns:
+        trimmed = trimmed[-2 * turns:]
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(trimmed)
-    messages.append({"role": "user", "content": experiment})
-
-    chain = _attempt_chain()
+    messages.append({"role": "user", "content": message})
 
     tried_any = False
     errors = []
-    for provider, model in chain:
+    for provider, model in _attempt_chain():
         client = _client_for(provider)
         if client is None:
             continue  # no key for this provider — skip it
@@ -236,8 +186,8 @@ def run_experiment(investigation, experiment, history=None):
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                temperature=0.4,      # low: keep the simulated physics consistent
-                max_tokens=MAX_TOKENS,
+                temperature=0.4,
+                max_tokens=cap,
             )
             return response.choices[0].message.content
         except Exception as error:  # noqa: BLE001 - try the next fallback
@@ -249,8 +199,29 @@ def run_experiment(investigation, experiment, history=None):
             f"No API key found for provider '{PROVIDER}' (or any fallback). "
             f"Set {_provider_config()['api_key_env']} in your .env file."
         )
-
     raise RuntimeError(
         "All AI providers failed (they may be rate-limited — try again shortly).\n"
         + "\n".join(errors)
+    )
+
+
+def run_experiment(investigation, experiment, history=None):
+    """Chemistry lab: simulate one experiment and return the technician's reply."""
+    return _complete(build_system_prompt(investigation), experiment, history=history)
+
+
+def chat(system_prompt, message, history=None, max_tokens=None, history_turns=None):
+    """
+    Generic tutor chat: reply to `message` using an arbitrary system prompt.
+
+    Same provider fallback and history trimming as the lab, but the caller can
+    raise the reply cap (a tutor may need to share code) and widen the history
+    window (a tutor tracks state across a long session).
+    """
+    return _complete(
+        system_prompt,
+        message,
+        history=history,
+        max_tokens=max_tokens,
+        history_turns=history_turns,
     )

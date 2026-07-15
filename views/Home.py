@@ -8,12 +8,16 @@ st.title("🔬 Scientific AI Laboratory")
 
 st.markdown(
     """
-Welcome to the **Scientific AI Laboratory**.
+Welcome to the **Scientific AI Laboratory** — a set of AI-powered activities
+for science teaching.
 
-- 👩‍🏫 **Teacher** — choose or upload an investigation and get a link to share
-  with your students.
-- 🧪 **Student** — open the link your teacher gave you to enter the laboratory.
+- 🎓 **AI Tutors** — chat with a subject tutor (e.g. *Emmy*, the Socratic physics
+  research guide) that walks you through an experiment step by step.
+- 🧪 **Chemistry Lab** — identify an unknown sample by designing experiments;
+  open the link your teacher gave you to enter the laboratory.
+- 👩‍🏫 **Teacher** — choose or upload a chemistry investigation and get a link to
+  share with your students.
 
-Use the menu on the left to choose your role.
+Use the menu on the left to choose an activity.
 """
 )
