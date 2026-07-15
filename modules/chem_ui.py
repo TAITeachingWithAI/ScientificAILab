@@ -73,18 +73,56 @@ def render_teacher():
     store = get_store()
 
     def show_summary(inv):
+        """Full confidential dossier for the teacher — including the answer."""
+        st.warning(
+            "This shows the full dossier, including the sample's identity and your "
+            "teacher notes. The app has no login, so anyone who opens this Teacher "
+            "tab can see it — set a `TEACHER_ACCESS_CODE` (in the app secrets / "
+            "`.env`) to keep it teacher-only."
+        )
+
+        sample = inv.get("sample", {}) or {}
+        st.write("#### 🧪 Unknown sample (the answer)")
+        if sample:
+            for key, value in sample.items():
+                st.write(f"**{key}:** {value}")
+        else:
+            st.write("_not specified_")
+
         planet = inv.get("planet", {}) or {}
-        st.write("### Planet")
-        st.write(f"**Name:** {planet.get('Name', '')}")
-        st.write(f"**Type:** {planet.get('Planet type', '')}")
-        st.write(f"**Temperature:** {planet.get('Surface temperature', '')}")
-        st.write(f"**Pressure:** {planet.get('Surface pressure', '')}")
-        st.write(f"**Gravity:** {planet.get('Gravity', '')}")
-        st.write(f"**Atmosphere:** {planet.get('Atmosphere', '')}")
-        st.divider()
-        st.write(f"✅ {len(inv.get('experiments', []))} experiments available")
-        if inv.get("override_results"):
-            st.write(f"✅ {len(inv['override_results'])} required results defined")
+        if planet:
+            st.write("#### 🪐 Planet")
+            for key, value in planet.items():
+                st.write(f"**{key}:** {value}")
+
+        known = inv.get("known_properties", {}) or {}
+        if known:
+            st.write("#### Known properties (students may discover these)")
+            for key, value in known.items():
+                st.write(f"**{key}:** {value}")
+
+        experiments = inv.get("experiments", []) or []
+        if experiments:
+            st.write(f"#### Experiments ({len(experiments)})")
+            for experiment in experiments:
+                st.write(f"- {experiment}")
+
+        overrides = inv.get("override_results", {}) or {}
+        if overrides:
+            st.write(f"#### Required results / overrides ({len(overrides)})")
+            for key, value in overrides.items():
+                st.write(f"**{key}:** {value}")
+
+        behaviour = inv.get("ai_behaviour", {}) or {}
+        if behaviour:
+            st.write("#### AI behaviour")
+            for key, value in behaviour.items():
+                st.write(f"**{key}:** {value}")
+
+        notes = (inv.get("teacher_notes", "") or "").strip()
+        if notes:
+            st.write("#### 📝 Teacher notes")
+            st.write(notes)
 
     def show_link(scenario_id):
         link = build_share_link(scenario_id)
@@ -110,7 +148,7 @@ def render_teacher():
             choice = st.selectbox("Scenario", list(labels.keys()), key="teacher_builtin")
             scenario_id = labels[choice]
             show_link(scenario_id)
-            with st.expander("Preview this scenario (confidential)"):
+            with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
                 show_summary(store.load(scenario_id))
 
     with tab_upload:
@@ -139,7 +177,7 @@ def render_teacher():
                 scenario_id = st.session_state["upload_id"]
                 st.success("✅ Dossier saved.")
                 show_link(scenario_id)
-                with st.expander("Preview this scenario (confidential)"):
+                with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
                     show_summary(store.load(scenario_id))
 
     with st.expander("📖 Teacher Guide — how to use the Chemistry Lab"):
