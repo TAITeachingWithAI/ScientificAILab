@@ -22,6 +22,16 @@ from modules.store import get_store, validate_investigation, build_share_link
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# Shared story framing shown at the top of the Chemistry Lab (student, teacher,
+# and the shared-link view all use this).
+LAB_INTRO = (
+    "🛰️ **A new exoplanet has been detected — and on its surface, a lake of an "
+    "unknown liquid. Could it be water?**\n\n"
+    "You can't travel there to find out. But in this AI laboratory a robot runs "
+    "the experiments for you: just tell it what you'd like to measure, and it "
+    "reports what the instruments show. **Can you identify the liquid?**"
+)
+
 
 def render_lab_chat(investigation, history_key):
     """Render the experiment chat for a given scenario (one history per key)."""

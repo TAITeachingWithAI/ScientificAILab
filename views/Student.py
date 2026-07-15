@@ -13,13 +13,7 @@ from modules.store import get_store
 
 st.title("🧪 Student Laboratory")
 
-st.write(
-    """
-Your task is to identify the unknown liquid.
-Design experiments, interpret the observations, and reason toward the answer —
-the AI won't reveal it.
-"""
-)
+st.markdown(chem_ui.LAB_INTRO)
 
 store = get_store()
 

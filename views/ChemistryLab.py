@@ -8,10 +8,7 @@ from modules import llm, chem_ui
 from modules.store import get_store
 
 st.title("🧪 Chemistry Lab")
-st.write(
-    "Identify an unknown liquid by designing experiments and interpreting the "
-    "observations. The AI simulates the lab — it won't reveal the answer."
-)
+st.markdown(chem_ui.LAB_INTRO)
 
 role = st.radio(
     "I am a…",
