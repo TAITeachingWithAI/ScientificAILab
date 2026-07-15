@@ -16,7 +16,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from modules import llm
+from modules import llm, ui
 from modules.dossier_reader import read_docx
 from modules.store import get_store, validate_investigation, build_share_link
 
@@ -35,6 +35,7 @@ LAB_INTRO = (
 
 def render_lab_chat(investigation, history_key):
     """Render the experiment chat for a given scenario (one history per key)."""
+    ui.ai_note()
     if history_key not in st.session_state:
         st.session_state[history_key] = []
     history = st.session_state[history_key]

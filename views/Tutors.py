@@ -9,7 +9,7 @@ Two kinds:
 
 import streamlit as st
 
-from modules import tutors, llm
+from modules import tutors, llm, ui
 
 st.title("🎓 AI Tutors")
 
@@ -90,6 +90,7 @@ if kind == "socratic":
             {"role": "assistant", "content": tutor["greeting"]}
         ]
 
+    ui.ai_note()
     render_chat(tutors.load_prompt(tutor_id), "Type your reply…")
 
     if len(st.session_state[history_key]) > 1:
