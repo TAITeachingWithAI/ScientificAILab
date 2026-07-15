@@ -22,6 +22,17 @@ tutor = tutors.get_tutor(tutor_id)
 
 st.caption(tutor["description"])
 
+with st.expander("⚡ Want to run this tutor in your own (stronger) chatbot?"):
+    st.write(
+        "This app uses a free AI model. You can run the very same tutor in "
+        "ChatGPT, Claude, Gemini or another chatbot instead — just copy its prompt."
+    )
+    st.page_link(
+        "views/RunElsewhere.py",
+        label="Get the prompt to use elsewhere",
+        icon="🔗",
+    )
+
 if not llm.is_configured():
     st.error(
         f"The AI is not configured yet (provider: **{llm.PROVIDER}**). "
