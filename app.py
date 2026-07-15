@@ -49,8 +49,5 @@ else:
 
     home = st.Page("views/Home.py", title="Home", icon="🔬", default=True)
     tutors = st.Page("views/Tutors.py", title="AI Tutors", icon="🎓", url_path="Tutors")
-    elsewhere = st.Page("views/RunElsewhere.py", title="Use in your own chatbot", icon="🔗", url_path="elsewhere")
-    student = st.Page("views/Student.py", title="Chemistry Lab", icon="🧪", url_path="Student")
-    teacher = st.Page("views/Teacher.py", title="Teacher", icon="👩‍🏫", url_path="Teacher")
-    guide = st.Page("views/Guide.py", title="Teacher Guide", icon="📖", url_path="Guide")
-    st.navigation([home, tutors, elsewhere, student, teacher, guide]).run()
+    chem = st.Page("views/ChemistryLab.py", title="Chemistry Lab", icon="🧪", url_path="ChemistryLab")
+    st.navigation([home, tutors, chem]).run()

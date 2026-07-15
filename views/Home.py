@@ -13,10 +13,9 @@ for science teaching.
 
 - 🎓 **AI Tutors** — chat with a subject tutor (e.g. *Emmy*, the Socratic physics
   research guide) that walks you through an experiment step by step.
-- 🧪 **Chemistry Lab** — identify an unknown sample by designing experiments;
-  open the link your teacher gave you to enter the laboratory.
-- 👩‍🏫 **Teacher** — choose or upload a chemistry investigation and get a link to
-  share with your students.
+- 🧪 **Chemistry Lab** — identify an unknown sample by designing experiments.
+  Inside, choose **Student** (pick a scenario, or open your teacher's link) or
+  **Teacher** (set up and share an investigation).
 
 Use the menu on the left to choose an activity.
 """

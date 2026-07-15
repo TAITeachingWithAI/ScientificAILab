@@ -22,16 +22,16 @@ tutor = tutors.get_tutor(tutor_id)
 
 st.caption(tutor["description"])
 
-with st.expander("⚡ Want to run this tutor in your own (stronger) chatbot?"):
-    st.write(
-        "This app uses a free AI model. You can run the very same tutor in "
-        "ChatGPT, Claude, Gemini or another chatbot instead — just copy its prompt."
+with st.expander("⚡ Run this tutor in your own (stronger) chatbot"):
+    st.markdown(
+        "This app uses a **free AI model**. You can run the very same tutor in a "
+        "stronger chatbot (ChatGPT, Claude, Gemini, Copilot…) instead:\n\n"
+        "1. Open a **new, empty chat** there.\n"
+        "2. **Copy the whole prompt below** (copy button, top-right of the box).\n"
+        "3. Paste it as your **first message** and send it — the tutor will greet "
+        "you and start guiding you."
     )
-    st.page_link(
-        "views/RunElsewhere.py",
-        label="Get the prompt to use elsewhere",
-        icon="🔗",
-    )
+    st.code(tutors.load_standalone(tutor_id), language="text")
 
 if not llm.is_configured():
     st.error(
