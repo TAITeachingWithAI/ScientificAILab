@@ -8,7 +8,7 @@ Created on Mon Jul 13 15:59:05 2026
 
 """
 Scientific AI Laboratory
-Version 0.1
+Version 0.2
 
 Main application / navigation controller.
 """
