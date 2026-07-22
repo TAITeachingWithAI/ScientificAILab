@@ -24,13 +24,16 @@ from modules.store import get_rover_store, validate_investigation, build_share_l
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 LAB_INTRO = (
-    "🛰️ **A rover has landed on an exoplanet where contaminated water was "
-    "found.** Purifying it needs Fe(OH)3 — so mission control needs a sample "
-    "rich in iron to begin with. \n\n"
+    "🛰️ **A rover has landed on an exoplanet where radiation levels are "
+    "rising — the base's shields need reinforcing with iron.** Mission "
+    "control needs a sample rich in iron: pure iron, an iron oxide, or an "
+    "iron compound in solution that can later be converted into an oxide "
+    "through chemical reactions. \n\n"
     "You can't travel there, but the rover's onboard AI laboratory can run "
     "physical tests on any site you send it to: pH, density, conductivity, "
     "colour, magnetism… The rover only carries so much energy, so choose "
-    "your tests wisely. **Which sample should be sent to Earth for analysis? There you can do further analysis and reactions to obtain Fe(OH)3**"
+    "your tests wisely. **Which sample should be sent to Earth for further "
+    "analysis and reactions?**"
 )
 
 
