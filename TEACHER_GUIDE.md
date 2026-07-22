@@ -133,3 +133,15 @@ they can't copy, then have each group present the evidence for their conclusion.
 | Upload rejected | The file isn't a valid dossier — check it uses the `# Planet`, `# Unknown Sample`, `# Experiments` headings. |
 | The AI won't run an experiment | The AI service may be briefly rate-limited. Wait a moment and try again. |
 | Planet summary shows blanks | A `# Planet` field name doesn't match (e.g. `Temperature` instead of `Surface temperature`). |
+
+---
+
+## Looking for the Rover Lab?
+
+The **Rover Lab** is a separate activity — students remotely drive a rover's
+AI-embedded laboratory across an exoplanet to find a sample rich in
+iron(III) chloride, on a limited energy budget. It's set up the same way
+(built-in or uploaded dossier, share link, Student/Teacher tabs), but its
+dossier format is different (candidate sampling sites with photos, instead
+of one unknown sample). See **`ROVER_TEACHER_GUIDE.md`** in the project
+repository.

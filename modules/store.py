@@ -50,6 +50,15 @@ DATA_DIR = PROJECT_ROOT / "data" / "scenarios"
 BUILTIN_PREFIX = "b_"
 UPLOAD_PREFIX = "u_"
 
+# Rover Lab uses a separate namespace (different dossier shape: candidate
+# sites + embedded photos instead of one unknown sample) so its scenarios
+# never mix with the Chemistry Lab's in the teacher's builtin list.
+ROVER_BUILTIN_SOURCES = []
+ROVER_BUILTIN_DIR = PROJECT_ROOT / "example_dossiers_rover"
+ROVER_DATA_DIR = PROJECT_ROOT / "data" / "rover_scenarios"
+ROVER_BUILTIN_PREFIX = "rb_"
+ROVER_UPLOAD_PREFIX = "ru_"
+
 
 # ------------------------------------------------------------------
 # Helpers (framework-free, reusable)
@@ -85,8 +94,8 @@ def _scenario_label(investigation, fallback):
     return f"{name} — {identity}" if identity else str(name)
 
 
-def _new_id():
-    return UPLOAD_PREFIX + secrets.token_urlsafe(8)
+def _new_id(prefix=UPLOAD_PREFIX):
+    return prefix + secrets.token_urlsafe(8)
 
 
 def _make_payload(investigation, label):
@@ -100,13 +109,38 @@ def _make_payload(investigation, label):
 # ------------------------------------------------------------------
 # Base store: built-in scenarios are handled the same way everywhere.
 # Subclasses only implement save() and _upload_by_id().
+#
+# Parameterised so the same class can serve two independent namespaces (the
+# Chemistry Lab and the Rover Lab): each gets its own builtin folder, id
+# prefixes, and dossier reader, so their scenarios never mix and an id from
+# one can never accidentally resolve in the other.
 # ------------------------------------------------------------------
 class BaseScenarioStore:
 
+    def __init__(
+        self,
+        builtin_sources=BUILTIN_SOURCES,
+        builtin_dir=BUILTIN_DIR,
+        builtin_prefix=BUILTIN_PREFIX,
+        upload_prefix=UPLOAD_PREFIX,
+        reader=read_docx,
+        list_reader=None,
+    ):
+        self.builtin_sources = builtin_sources
+        self.builtin_dir = builtin_dir
+        self.builtin_prefix = builtin_prefix
+        self.upload_prefix = upload_prefix
+        self.reader = reader
+        # A cheaper reader used only to build the scenario picker (just needs
+        # the planet name). Defaults to the full reader; the rover store
+        # overrides this to skip decoding every dossier's embedded photos,
+        # which would otherwise happen on every rerun for every dossier.
+        self.list_reader = list_reader or reader
+
     def _builtin_files(self):
-        files = [p for p in BUILTIN_SOURCES if p.exists()]
-        if BUILTIN_DIR.exists():
-            files.extend(sorted(BUILTIN_DIR.glob("*.docx")))
+        files = [p for p in self.builtin_sources if p.exists()]
+        if self.builtin_dir.exists():
+            files.extend(sorted(self.builtin_dir.glob("*.docx")))
         return files
 
     def list_builtin(self):
@@ -120,33 +154,33 @@ class BaseScenarioStore:
         items = []
         for path in self._builtin_files():
             try:
-                investigation = read_docx(str(path))
+                investigation = self.list_reader(str(path))
             except Exception:
                 continue
             planet = investigation.get("planet", {}) or {}
             label = planet.get("Name") or path.stem
             items.append(
                 {
-                    "id": BUILTIN_PREFIX + path.stem.lower(),
+                    "id": self.builtin_prefix + path.stem.lower(),
                     "label": label,
                 }
             )
         return items
 
     def _builtin_by_id(self, scenario_id):
-        stem = scenario_id[len(BUILTIN_PREFIX):]
+        stem = scenario_id[len(self.builtin_prefix):]
         for path in self._builtin_files():
             if path.stem.lower() == stem:
-                return read_docx(str(path))
+                return self.reader(str(path))
         return None
 
     def load(self, scenario_id):
         """Return the investigation dict for an id, or None if not found."""
         if not scenario_id:
             return None
-        if scenario_id.startswith(BUILTIN_PREFIX):
+        if scenario_id.startswith(self.builtin_prefix):
             return self._builtin_by_id(scenario_id)
-        if scenario_id.startswith(UPLOAD_PREFIX):
+        if scenario_id.startswith(self.upload_prefix):
             return self._upload_by_id(scenario_id)
         return None
 
@@ -162,12 +196,13 @@ class BaseScenarioStore:
 # Local backend (development)
 # ------------------------------------------------------------------
 class LocalScenarioStore(BaseScenarioStore):
-    def __init__(self, data_dir=DATA_DIR):
+    def __init__(self, data_dir=DATA_DIR, **kwargs):
+        super().__init__(**kwargs)
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def save(self, investigation, label=None):
-        scenario_id = _new_id()
+        scenario_id = _new_id(self.upload_prefix)
         payload = _make_payload(investigation, label)
         path = self.data_dir / f"{scenario_id}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
@@ -186,12 +221,13 @@ class LocalScenarioStore(BaseScenarioStore):
 # S3-compatible backend (production: Cloudflare R2 / AWS S3 / B2 / MinIO)
 # ------------------------------------------------------------------
 class S3ScenarioStore(BaseScenarioStore):
-    def __init__(self):
+    def __init__(self, s3_prefix=None, **kwargs):
+        super().__init__(**kwargs)
         import boto3  # imported lazily so local dev doesn't need boto3
         from botocore.config import Config
 
         self.bucket = os.environ["S3_BUCKET"]
-        self.prefix = os.getenv("S3_PREFIX", "scenarios/")
+        self.prefix = s3_prefix or os.getenv("S3_PREFIX", "scenarios/")
         endpoint = os.getenv("S3_ENDPOINT_URL") or None  # R2/Supabase need this; AWS leaves empty
 
         # Non-AWS S3 endpoints (Supabase, R2, MinIO) require path-style
@@ -213,7 +249,7 @@ class S3ScenarioStore(BaseScenarioStore):
         return f"{self.prefix}{scenario_id}.json"
 
     def save(self, investigation, label=None):
-        scenario_id = _new_id()
+        scenario_id = _new_id(self.upload_prefix)
         payload = _make_payload(investigation, label)
         self.client.put_object(
             Bucket=self.bucket,
@@ -243,7 +279,7 @@ class S3ScenarioStore(BaseScenarioStore):
 # Factory + link helper
 # ------------------------------------------------------------------
 def get_store():
-    """Returns the configured scenario store (STORE_BACKEND in .env)."""
+    """Returns the configured Chemistry Lab scenario store (STORE_BACKEND in .env)."""
     backend = os.getenv("STORE_BACKEND", "local").strip().lower()
     if backend == "local":
         return LocalScenarioStore()
@@ -254,12 +290,37 @@ def get_store():
     )
 
 
-def build_share_link(scenario_id):
-    """
-    Full URL a teacher gives to students, e.g. .../?lab=<id>.
+def get_rover_store():
+    """Returns the configured Rover Lab scenario store (its own namespace)."""
+    from modules.rover_dossier_reader import read_rover_docx
 
-    The link points at the app root: because the ?lab param is present, the app
-    opens the student-only view with navigation hidden.
+    backend = os.getenv("STORE_BACKEND", "local").strip().lower()
+    kwargs = dict(
+        builtin_sources=ROVER_BUILTIN_SOURCES,
+        builtin_dir=ROVER_BUILTIN_DIR,
+        builtin_prefix=ROVER_BUILTIN_PREFIX,
+        upload_prefix=ROVER_UPLOAD_PREFIX,
+        reader=read_rover_docx,
+        # Dossier photos can be several MB each; don't decode every image in
+        # every built-in dossier just to list planet names in a picker.
+        list_reader=lambda path: read_rover_docx(path, extract_images=False),
+    )
+    if backend == "local":
+        return LocalScenarioStore(data_dir=ROVER_DATA_DIR, **kwargs)
+    if backend in ("s3", "r2"):
+        s3_prefix = os.getenv("S3_ROVER_PREFIX", "rover_scenarios/")
+        return S3ScenarioStore(s3_prefix=s3_prefix, **kwargs)
+    raise NotImplementedError(
+        f"Store backend '{backend}' is not supported. Use 'local' or 's3'."
+    )
+
+
+def build_share_link(scenario_id, param="lab"):
+    """
+    Full URL a teacher gives to students, e.g. .../?lab=<id> (or ?rover=<id>).
+
+    The link points at the app root: because the query param is present, the
+    app opens the student-only view with navigation hidden.
     """
     base = os.getenv("APP_BASE_URL", "http://localhost:8501").rstrip("/")
-    return f"{base}/?lab={quote(scenario_id, safe='')}"
+    return f"{base}/?{param}={quote(scenario_id, safe='')}"

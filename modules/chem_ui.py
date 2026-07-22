@@ -11,7 +11,6 @@ This is a UI-layer module — unlike llm.py / store.py / tutors.py, it DOES impo
 Streamlit.
 """
 
-import os
 from pathlib import Path
 
 import streamlit as st
@@ -70,16 +69,7 @@ def render_lab_chat(investigation, history_key):
 
 def render_teacher():
     """Teacher setup: pick or upload a scenario, get a share link, read the guide."""
-    access_code = os.getenv("TEACHER_ACCESS_CODE", "").strip()
-    if access_code and st.session_state.get("teacher_ok") is not True:
-        code = st.text_input("Teacher access code", type="password", key="teacher_code")
-        if st.button("Enter", key="teacher_enter"):
-            if code == access_code:
-                st.session_state["teacher_ok"] = True
-                st.rerun()
-            else:
-                st.error("Incorrect code.")
-        st.stop()
+    ui.require_teacher_access()
 
     store = get_store()
 

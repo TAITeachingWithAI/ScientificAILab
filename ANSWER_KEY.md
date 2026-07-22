@@ -23,3 +23,29 @@ of the app so students can't read it. Don't share it with students.
 - **Hydrogen peroxide (D):** slightly acidic; decomposes with a catalyst
   (manganese dioxide, or catalase in potato/liver) to release oxygen that
   relights a glowing splint. Introduces catalysts and decomposition reactions.
+
+---
+
+## Rover Lab
+
+| File | Sites (in order) | Correct site (answer) | Level |
+|---|---|---|---|
+| `example_dossiers_rover/Dossier_RoverExoplanet_1.docx` | Reddish-brown rock outcrop, Pale yellow-green pool, White crusty salt flat, Dark metallic-looking vein | **Pale yellow-green pool** — iron(III) chloride solution | Standard |
+
+**Vestara-3 (Rover 1):** the pool (iron(III) chloride solution) is the
+**only** one of the four sites that actually contains iron. It's strongly
+acidic (Fe3+ hydrolysis), dense and highly conductive (concentrated ionic
+solution), and turns deep blood-red with potassium thiocyanate (the classic
+Fe3+ test) — but is **not** magnetic. The reddish rock is copper(I) oxide
+(cuprite) — a colour look-alike for iron oxide, but far denser (6.0 g/cm³)
+and gives no thiocyanate reaction. The dark vein is a nickel-rich sulfide —
+genuinely magnetic (nickel is ferromagnetic too, not just iron) but contains
+no iron, which is the sharpest trap since the real answer isn't magnetic at
+all. The salt flat is a simple neutral, non-magnetic decoy. Students need the
+thiocyanate test (the only one that isolates the pool) plus at least one more
+(pH, density, or magnetism) to rule out the nickel vein's magnetic red
+herring and converge confidently on the pool.
+
+Note: since the AI is never given any site's `Identity` (see
+`ROVER_TEACHER_GUIDE.md`), this document is the *only* place the answer is
+written down in plain language — keep it out of anything students can see.

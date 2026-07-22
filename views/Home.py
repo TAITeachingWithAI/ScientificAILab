@@ -16,6 +16,11 @@ for science teaching.
 - 🧪 **Chemistry Lab** — identify an unknown sample by designing experiments.
   Inside, choose **Student** (pick a scenario, or open your teacher's link) or
   **Teacher** (set up and share an investigation).
+- 🛰️ **Rover Lab** — remotely drive a rover's AI-embedded laboratory across
+  an exoplanet, pick a sampling site from its photos, and run physical tests
+  to work out which one most likely holds the iron(III) chloride sample
+  mission control needs. Runs on a limited energy budget. Same **Student** /
+  **Teacher** structure as the Chemistry Lab.
 
 Use the menu on the left to choose an activity.
 """

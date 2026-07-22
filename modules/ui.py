@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 """Small shared UI snippets used across chat pages."""
 
+import os
+
 import streamlit as st
 
 # One place to edit the wording of the general AI caveat.
@@ -15,3 +17,25 @@ AI_NOTE = (
 def ai_note():
     """A concise caption reminding students the AI can be incorrect."""
     st.caption(AI_NOTE)
+
+
+def require_teacher_access(session_key="teacher_ok", input_key="teacher_code"):
+    """
+    Gate a teacher page behind TEACHER_ACCESS_CODE (shared by every teacher
+    area of the app), if one is configured. Returns without doing anything if
+    access is already granted or no code is configured; calls st.stop()
+    otherwise so the caller's remaining code never runs for an unverified
+    visitor.
+    """
+    access_code = os.getenv("TEACHER_ACCESS_CODE", "").strip()
+    if not access_code or st.session_state.get(session_key) is True:
+        return
+
+    code = st.text_input("Teacher access code", type="password", key=input_key)
+    if st.button("Enter", key=f"{input_key}_enter"):
+        if code == access_code:
+            st.session_state[session_key] = True
+            st.rerun()
+        else:
+            st.error("Incorrect code.")
+    st.stop()
