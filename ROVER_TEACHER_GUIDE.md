@@ -1,12 +1,10 @@
 # Teacher Guide — Rover Lab
 
-Students play the role of scientists remotely operating a rover on an
-exoplanet. Contaminated water has been found there, and purifying it needs
-Fe(OH)3 — so mission control needs a sample rich in iron, ideally iron(III)
+Students play the role of scientists that need to fix a damaged shield, for which they need to extract iron oxide from the exoplanet — so mission control needs a sample rich in iron, ideally iron(III)
 chloride. Students pick a candidate sampling site from the rover's photos,
 then task its onboard AI laboratory with physical tests (pH, density,
 conductivity, magnetism, colour reactions…) to work out which site is most
-promising — on a limited energy budget, so tests have to be chosen wisely.
+promising (has the largest amount of extractable iron oxide) — on a limited energy budget, so tests have to be chosen wisely.
 The AI never states the answer outright.
 
 You control everything through a **dossier**: the planet, the mission
@@ -99,14 +97,14 @@ sub-lists). **Keep these heading lines exactly as written**:
 The easiest way to start is to open `Dossier_Rover_Template.docx` (in the
 project's GitHub repository), fill it in, and save it under a new name. A
 fully worked example lives at
-`example_dossiers_rover/Dossier_RoverExoplanet_1.docx`.
+`example_dossiers_rover/Dossier_Rover_Example.docx`. In that folder, you can also now find the 8 exoplanet files for the TAI project (Round 2).
 
 ### What each section is for
 
 | Section | What to put here |
 |---|---|
 | **# Planet** | The world's conditions: `Name`, `Planet type`, `Surface temperature`, `Surface pressure`, `Gravity`, `Atmosphere`. |
-| **# Mission Briefing** | The contaminated-water / Fe(OH)3 story, in your planet's setting. Shown to students. |
+| **# Mission Briefing** | The story, in your planet's setting. Shown to students. |
 | **# Rover** | `Starting energy`, `Site visit cost`, `Experiment cost` — all optional integers; sensible defaults (100 / 10 / 15) are used if left blank. |
 | **# Overview Image** | Insert a picture (Insert → Pictures) right after this heading — the wide shot shown before a site is picked. Optional; without one, students see a short generic prompt instead. |
 | **# Site: `<label>`** (repeated) | One per candidate sampling site. The `<label>` is shown to students **exactly as written**, so keep it a neutral visual description (e.g. `Reddish-brown rock outcrop`), never the chemical identity. Fields: `Description` (shown to students), `Identity` (for you only — the true composition; **never sent to the AI**, it's your answer key). Insert a close-up picture anywhere in the section for that site's photo (optional). |
