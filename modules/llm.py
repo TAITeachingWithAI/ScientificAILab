@@ -61,10 +61,12 @@ PROVIDERS = {
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
         "api_key_env": "GROQ_API_KEY",
-        # Plain instruct model that reliably keeps the answer hidden. Reasoning
-        # models on Groq (gpt-oss, qwen3) tend to leak the sample identity or
-        # dump their <think> reasoning, so they are NOT used here.
-        "default_model": "llama-3.3-70b-versatile",
+        # Groq decommissioned all the Llama models (Aug 2026). gpt-oss is
+        # OpenAI's open model; on Groq it returns clean replies (its reasoning
+        # stays in a separate channel, not dumped into the answer). If this id
+        # is retired too, the app auto-discovers a live model (see
+        # _discover_chat_model), so it keeps working.
+        "default_model": "openai/gpt-oss-120b",
     },
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -99,7 +101,7 @@ PROVIDER = os.getenv("LAB_PROVIDER", "groq").strip().lower()
 MODEL = os.getenv("LAB_MODEL", "").strip()  # empty -> use the provider default
 MAX_TOKENS = int(os.getenv("LAB_MAX_TOKENS", "700"))
 HISTORY_TURNS = int(os.getenv("LAB_HISTORY_TURNS", "6"))
-FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:llama-3.1-8b-instant")
+FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:openai/gpt-oss-20b")
 
 
 class LabConfigError(RuntimeError):
@@ -155,6 +157,45 @@ def _client_for(provider):
     return OpenAI(api_key=api_key, base_url=cfg["base_url"])
 
 
+# Cache of a model auto-discovered from a provider's live model list, used as a
+# last resort when the configured models have been decommissioned.
+_discovered_model = {}
+
+# Substrings that mark a model as NOT a general chat model (speech, guards, ...).
+_NON_CHAT = ("whisper", "guard", "orpheus", "tts", "embed", "safeguard",
+             "moderation", "compound")
+# Preference order when auto-picking (best general chat models first).
+_PREFERRED = ("gpt-oss-120b", "gpt-oss-20b", "llama-3.3", "llama-4", "llama-3.1",
+              "qwen", "mixtral", "gemma", "gpt-4o", "gpt-5")
+
+
+def _discover_chat_model(provider):
+    """
+    Ask the provider which models it currently serves and pick a general chat
+    model. Cached per provider. Makes the app self-healing: if the configured
+    models are decommissioned, it routes to whatever is live instead of failing.
+    """
+    if provider in _discovered_model:
+        return _discovered_model[provider]
+    model = None
+    client = _client_for(provider)
+    if client is not None:
+        try:
+            ids = [m.id for m in client.models.list().data]
+            candidates = [i for i in ids if not any(b in i.lower() for b in _NON_CHAT)]
+            for pref in _PREFERRED:
+                match = next((i for i in candidates if pref in i.lower()), None)
+                if match:
+                    model = match
+                    break
+            if model is None and candidates:
+                model = candidates[0]
+        except Exception:  # noqa: BLE001
+            model = None
+    _discovered_model[provider] = model
+    return model
+
+
 def _complete(system_prompt, message, history=None, max_tokens=None, history_turns=None):
     """
     Core completion with provider fallback. Shared by run_experiment and chat.
@@ -199,6 +240,24 @@ def _complete(system_prompt, message, history=None, max_tokens=None, history_tur
             f"No API key found for provider '{PROVIDER}' (or any fallback). "
             f"Set {_provider_config()['api_key_env']} in your .env file."
         )
+
+    # Last resort: the configured models may have been decommissioned. Ask the
+    # primary provider what it currently serves and retry with a live model.
+    discovered = _discover_chat_model(PROVIDER)
+    if discovered:
+        client = _client_for(PROVIDER)
+        if client is not None:
+            try:
+                response = client.chat.completions.create(
+                    model=discovered,
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=cap,
+                )
+                return response.choices[0].message.content
+            except Exception as error:  # noqa: BLE001
+                errors.append(f"{PROVIDER}/{discovered} (auto-discovered): {error}")
+
     raise RuntimeError(
         "All AI providers failed (they may be rate-limited — try again shortly).\n"
         + "\n".join(errors)
