@@ -112,6 +112,7 @@ else:
         "It can be inaccurate or biased — treat its words as role-play, **not real "
         "quotations**, and verify any facts or quotes against real historical sources."
     )
+    ui.ai_note()
 
     # --- setup form (until a debate is started) ---
     if prompt_key not in st.session_state:

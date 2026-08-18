@@ -148,6 +148,12 @@ def _attempt_chain():
     return chain
 
 
+def current_model():
+    """The (provider, model) that will be tried first — for display/transparency."""
+    chain = _attempt_chain()
+    return chain[0] if chain else (PROVIDER, MODEL)
+
+
 def _client_for(provider):
     """Build an OpenAI-compatible client for a provider, or None if no key."""
     cfg = PROVIDERS[provider]
