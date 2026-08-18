@@ -57,7 +57,7 @@ TUTORS = {
             "Please begin now: introduce yourself in character in one short "
             "paragraph as instructed, then wait for our questions."
         ),
-        "max_tokens": 900,    # ~300-word answers + the intro
+        "max_tokens": 900,    # ~200-word answers + the intro (headroom to avoid cut-offs)
         "history_turns": 20,  # debates run long
         # Ready-made characters (from the lesson). Each carries a curated tone,
         # partly for safety (e.g. Leopold II must acknowledge the atrocities).
@@ -113,18 +113,14 @@ TUTORS = {
 }
 
 
-# Prepended when a student pastes a tutor into their OWN chatbot.
+# Prepended when a student pastes a tutor into their OWN chatbot. This is the
+# only text the receiving AI needs; the how-to-paste steps live in the app's UI
+# (the expander), NOT inside the copy box, so students don't paste them too.
 _STANDALONE_HEADER = """\
-[Paste this whole message as the FIRST message in a new, empty chat with any AI
-assistant (ChatGPT, Claude, Gemini, Copilot, ...). It configures the assistant to
-take on the role described below.]
+Adopt the role defined below and keep it for the whole conversation. Begin
+immediately as the instructions say, then follow every rule on every turn.
 
-Adopt the role defined in the instructions that follow and keep it for the entire
-conversation. Begin immediately as those instructions say — for a tutor, send its
-opening line; for a role-play, introduce yourself in character — then wait for the
-student's reply. Follow every rule below on every turn.
-
-===============================================================================
+-------------------------------------------------------------------------------
 
 """
 
