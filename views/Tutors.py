@@ -7,9 +7,11 @@ Two kinds:
   - roleplay  -> a short setup form builds the prompt (Debate a Historical Figure)
 """
 
+import secrets
+
 import streamlit as st
 
-from modules import tutors, llm, ui
+from modules import tutors, llm, ui, progress
 
 st.title("🎓 AI Tutors")
 
@@ -33,6 +35,52 @@ if not llm.is_configured():
     st.stop()
 
 history_key = f"tutor_history::{tutor_id}"
+prompt_key = f"rp_prompt::{tutor_id}"
+label_key = f"rp_label::{tutor_id}"
+
+# --- Never lose a student's work -------------------------------------------
+# Keep a per-student session id in the URL (?sid=...). Because it lives in the
+# URL it survives a page reload or a dropped connection, and the transcript is
+# saved after every turn, so the student can always pick up where they left off,
+# even if the app itself restarts.
+sid = st.query_params.get("sid")
+if not sid:
+    sid = secrets.token_urlsafe(6)
+    st.query_params["sid"] = sid
+save_key = f"{sid}__{tutor_id}"
+
+
+def _restore_once():
+    """On a fresh page load, reload this student's saved conversation (if any)."""
+    if history_key in st.session_state:
+        return
+    saved = progress.load(save_key)
+    if not saved or not saved.get("history"):
+        return
+    st.session_state[history_key] = saved["history"]
+    if saved.get("prompt"):  # a role-play in progress: restore its setup too
+        st.session_state[prompt_key] = saved["prompt"]
+        if saved.get("label"):
+            st.session_state[label_key] = saved["label"]
+
+
+def _persist():
+    """Autosave the current conversation. Does nothing when nothing has changed."""
+    history = st.session_state.get(history_key)
+    if not history:
+        return
+    seen_key = f"{save_key}__n"
+    if st.session_state.get(seen_key) == len(history):
+        return
+    envelope = {"history": history}
+    if st.session_state.get(prompt_key):
+        envelope["prompt"] = st.session_state[prompt_key]
+        envelope["label"] = st.session_state.get(label_key)
+    if progress.save(save_key, envelope):
+        st.session_state[seen_key] = len(history)
+
+
+_restore_once()
 
 
 def run_elsewhere_expander(standalone_prompt, verb="guiding you"):
@@ -91,6 +139,7 @@ if kind == "socratic":
         ]
 
     ui.ai_note()
+    st.caption("💾 Your progress is saved automatically — it's safe to reload this page.")
     render_chat(tutors.load_prompt(tutor_id), "Type your reply…")
 
     if len(st.session_state[history_key]) > 1:
@@ -104,9 +153,6 @@ if kind == "socratic":
 # Role-play tutors (Debate a Historical Figure)
 # ------------------------------------------------------------------
 else:
-    prompt_key = f"rp_prompt::{tutor_id}"
-    label_key = f"rp_label::{tutor_id}"
-
     st.warning(
         "⚠️ This is an AI **simulation** of a historical figure for debate practice. "
         "It can be inaccurate or biased — treat its words as role-play, **not real "
@@ -180,6 +226,8 @@ else:
         st.caption(f"**Debating:** {st.session_state.get(label_key, '')}")
 
         if st.button("↩️ Change character / restart"):
+            progress.save(save_key, {"history": []})  # clear so it isn't restored
+            st.session_state[f"{save_key}__n"] = 0
             for key in (prompt_key, label_key, history_key):
                 st.session_state.pop(key, None)
             st.rerun()
@@ -194,4 +242,10 @@ else:
             "character and give a short factual summary."
         )
 
+        st.caption("💾 Your progress is saved automatically — it's safe to reload this page.")
         render_chat(st.session_state[prompt_key], "Ask the figure a question…")
+
+
+# Autosave the current conversation at the end of every run (cheap; skips when
+# nothing changed). This is what lets a student reload and continue seamlessly.
+_persist()
