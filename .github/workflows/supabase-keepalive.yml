@@ -4,17 +4,18 @@ name: Supabase keep-alive
 # about 7 days of inactivity) by sending a small authenticated request on a
 # schedule. Each request counts as activity and resets the idle timer.
 #
-# Setup (one time): in the repo, go to
-#   Settings -> Secrets and variables -> Actions -> New repository secret
-# and add these TWO secrets:
+# NOTE: this project's API gateway requires an apikey on EVERY request, so both
+# secrets below are required.
+#
+# Setup (one time): repo -> Settings -> Secrets and variables -> Actions.
 #   SUPABASE_URL       the project URL, e.g. https://<ref>.supabase.co
 #                      (NOT the ...storage.supabase.co/storage/v1/s3 endpoint)
-#   SUPABASE_ANON_KEY  the project's anon / public API key
-#                      (Supabase dashboard -> Project Settings -> API)
+#   SUPABASE_ANON_KEY  the project's anon / public API key (a long JWT starting
+#                      with eyJ...). Supabase dashboard -> Project Settings -> API.
 #
-# Nothing secret is stored in this file. You can also trigger it by hand from
-# the Actions tab ("Run workflow"). If the project is already paused, this run
-# FAILS on purpose so you get a GitHub email telling you to unpause it.
+# Nothing secret is stored in this file. Trigger it by hand from the Actions tab
+# ("Run workflow"). If the project is paused, the run FAILS on purpose so you get
+# a GitHub email telling you to unpause it.
 
 on:
   schedule:
@@ -30,27 +31,29 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
-            echo "::error::Missing SUPABASE_URL or SUPABASE_ANON_KEY repo secret. See the header of this workflow file for setup."
-            exit 1
+          set -uo pipefail
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "::error::Missing SUPABASE_URL repo secret."; exit 1
+          fi
+          if [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::Missing SUPABASE_ANON_KEY repo secret (this project requires an apikey)."; exit 1
           fi
 
-          url="${SUPABASE_URL%/}/rest/v1/"
-          echo "Pinging ${url}"
+          BASE="${SUPABASE_URL%/}"
+          echo "Host: $(printf '%s' "$BASE" | sed -E 's#^https?://##; s#/.*##')"
+          echo "Anon key: length=${#SUPABASE_ANON_KEY} starts=${SUPABASE_ANON_KEY:0:4}"
 
-          # -sS = quiet but show errors; capture body + status. The key is passed
-          # via headers only, so it never appears in the logs.
           status=$(curl -sS -o /tmp/body.txt -w '%{http_code}' \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${url}" || echo "000")
+            "${BASE}/rest/v1/" || echo "000")
 
-          echo "HTTP status: ${status}"
+          body="$(head -c 300 /tmp/body.txt)"
+          echo "GET /rest/v1/ -> ${status}"
+          echo "Body: ${body}"
 
-          if grep -qi "paused" /tmp/body.txt; then
-            echo "::error::The Supabase project appears to be PAUSED. Unpause it in the Supabase dashboard."
-            head -c 300 /tmp/body.txt || true
+          if printf '%s' "$body" | grep -qi "paused"; then
+            echo "::error::The Supabase project is PAUSED. Unpause it in the Supabase dashboard."
             exit 1
           fi
 
@@ -58,12 +61,10 @@ jobs:
             2*|3*)
               echo "Keep-alive OK (${status}). Idle timer reset." ;;
             401|403)
-              echo "::warning::Reached the API but got ${status} (check SUPABASE_ANON_KEY). The request still counts as activity." ;;
+              echo "::error::Supabase rejected the key (${status}). If the body says 'Invalid API key', SUPABASE_ANON_KEY is wrong or from another project. If it says 'No API key found', the secret is empty or was not saved. Fix the secret and re-run."
+              exit 1 ;;
             000)
-              echo "::error::No response from Supabase (network/URL problem)."
-              exit 1 ;;
+              echo "::error::No response - check SUPABASE_URL is https://<ref>.supabase.co"; exit 1 ;;
             *)
-              echo "::error::Unexpected status ${status}."
-              head -c 300 /tmp/body.txt || true
-              exit 1 ;;
+              echo "::error::Unexpected status ${status}. See the body above."; exit 1 ;;
           esac
