@@ -103,6 +103,13 @@ MAX_TOKENS = int(os.getenv("LAB_MAX_TOKENS", "700"))
 HISTORY_TURNS = int(os.getenv("LAB_HISTORY_TURNS", "6"))
 FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:openai/gpt-oss-20b")
 
+# Fail fast: if a call hangs (slow model / rate-limit), give up after TIMEOUT
+# seconds and try the next fallback, instead of blocking for minutes and
+# letting the hosting platform reset the session (which loses the student's
+# progress). Keep retries low so a stuck call fails quickly.
+TIMEOUT = float(os.getenv("LAB_TIMEOUT", "45"))
+MAX_RETRIES = int(os.getenv("LAB_MAX_RETRIES", "1"))
+
 
 class LabConfigError(RuntimeError):
     """Raised when no provider is configured with a usable API key."""
@@ -160,7 +167,12 @@ def _client_for(provider):
     api_key = os.getenv(cfg["api_key_env"]) or ("ollama" if provider == "ollama" else None)
     if not api_key:
         return None
-    return OpenAI(api_key=api_key, base_url=cfg["base_url"])
+    return OpenAI(
+        api_key=api_key,
+        base_url=cfg["base_url"],
+        timeout=TIMEOUT,
+        max_retries=MAX_RETRIES,
+    )
 
 
 # Cache of a model auto-discovered from a provider's live model list, used as a

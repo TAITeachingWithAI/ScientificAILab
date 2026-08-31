@@ -38,8 +38,8 @@ TUTORS = {
             "questions so you do the thinking. What physics experiment are you "
             "investigating?"
         ),
-        "max_tokens": 1200,
-        "history_turns": 15,
+        "max_tokens": 800,
+        "history_turns": 10,
     },
     "history_debate": {
         "kind": "roleplay",
