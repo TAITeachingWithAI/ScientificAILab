@@ -107,8 +107,18 @@ FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:openai/gpt-oss-20b")
 # seconds and try the next fallback, instead of blocking for minutes and
 # letting the hosting platform reset the session (which loses the student's
 # progress). Keep retries low so a stuck call fails quickly.
-TIMEOUT = float(os.getenv("LAB_TIMEOUT", "45"))
+# Fail fast on a truly hung call, but leave enough headroom for a legitimately
+# slow reply: on the Groq free tier a normal gpt-oss answer can still take
+# ~50 s under load, so a tight timeout would cut off valid replies.
+TIMEOUT = float(os.getenv("LAB_TIMEOUT", "90"))
 MAX_RETRIES = int(os.getenv("LAB_MAX_RETRIES", "1"))
+
+# gpt-oss models "think" before answering. reasoning_effort ("low"/"medium"/
+# "high") trades depth for speed, but on Groq the latency is dominated by
+# server load, and forcing "low" was observed to hurt quality (the model runs
+# ahead and role-plays the student). So leave it UNSET by default (let the model
+# choose); set LAB_REASONING_EFFORT if you want to experiment with speed.
+REASONING_EFFORT = os.getenv("LAB_REASONING_EFFORT", "").strip()
 
 
 class LabConfigError(RuntimeError):
@@ -214,6 +224,14 @@ def _discover_chat_model(provider):
     return model
 
 
+def _create(client, model, messages, cap):
+    """One chat completion, adding reasoning_effort when configured (gpt-oss)."""
+    kwargs = dict(model=model, messages=messages, temperature=0.4, max_tokens=cap)
+    if REASONING_EFFORT:
+        kwargs["extra_body"] = {"reasoning_effort": REASONING_EFFORT}
+    return client.chat.completions.create(**kwargs)
+
+
 def _complete(system_prompt, message, history=None, max_tokens=None, history_turns=None):
     """
     Core completion with provider fallback. Shared by run_experiment and chat.
@@ -242,12 +260,7 @@ def _complete(system_prompt, message, history=None, max_tokens=None, history_tur
             continue  # no key for this provider — skip it
         tried_any = True
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.4,
-                max_tokens=cap,
-            )
+            response = _create(client, model, messages, cap)
             return response.choices[0].message.content
         except Exception as error:  # noqa: BLE001 - try the next fallback
             errors.append(f"{provider}/{model}: {error}")
@@ -266,12 +279,7 @@ def _complete(system_prompt, message, history=None, max_tokens=None, history_tur
         client = _client_for(PROVIDER)
         if client is not None:
             try:
-                response = client.chat.completions.create(
-                    model=discovered,
-                    messages=messages,
-                    temperature=0.4,
-                    max_tokens=cap,
-                )
+                response = _create(client, discovered, messages, cap)
                 return response.choices[0].message.content
             except Exception as error:  # noqa: BLE001
                 errors.append(f"{PROVIDER}/{discovered} (auto-discovered): {error}")
