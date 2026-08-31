@@ -9,7 +9,7 @@ The in-app version (with a scenario picker) lives in ChemistryLab.py.
 import streamlit as st
 
 from modules import llm, chem_ui
-from modules.store import get_store
+from modules.store import get_store, StoreUnavailable
 
 st.title("🧪 Student Laboratory")
 
@@ -18,7 +18,11 @@ st.markdown(chem_ui.LAB_INTRO)
 store = get_store()
 
 lab_id = st.query_params.get("lab")
-investigation = store.load(lab_id) if lab_id else None
+try:
+    investigation = store.load(lab_id) if lab_id else None
+except StoreUnavailable as error:
+    st.error(str(error))
+    st.stop()
 
 # Fallback: teacher testing in the same browser session (legacy hand-off).
 if investigation is None:

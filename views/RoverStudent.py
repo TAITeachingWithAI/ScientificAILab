@@ -10,13 +10,18 @@ picker) lives in RoverLab.py.
 import streamlit as st
 
 from modules import llm, rover_ui
+from modules.store import StoreUnavailable
 
 st.title("🛰️ Rover Lab — Student Mission")
 
 st.markdown(rover_ui.LAB_INTRO)
 
 lab_id = st.query_params.get("rover")
-investigation = rover_ui.load_scenario(lab_id) if lab_id else None
+try:
+    investigation = rover_ui.load_scenario(lab_id) if lab_id else None
+except StoreUnavailable as error:
+    st.error(str(error))
+    st.stop()
 
 if investigation is None:
     if lab_id:

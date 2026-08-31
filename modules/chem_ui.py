@@ -17,7 +17,12 @@ import streamlit as st
 
 from modules import llm, ui
 from modules.dossier_reader import read_docx
-from modules.store import get_store, validate_investigation, build_share_link
+from modules.store import (
+    get_store,
+    validate_investigation,
+    build_share_link,
+    StoreUnavailable,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -164,10 +169,14 @@ def render_teacher():
                 ok, message = validate_investigation(investigation)
                 st.session_state["upload_signature"] = signature
                 if ok:
-                    st.session_state["upload_id"] = store.save(
-                        investigation, label=uploaded_file.name
-                    )
-                    st.session_state["upload_error"] = None
+                    try:
+                        st.session_state["upload_id"] = store.save(
+                            investigation, label=uploaded_file.name
+                        )
+                        st.session_state["upload_error"] = None
+                    except StoreUnavailable as error:
+                        st.session_state["upload_id"] = None
+                        st.session_state["upload_error"] = str(error)
                 else:
                     st.session_state["upload_id"] = None
                     st.session_state["upload_error"] = message
