@@ -18,8 +18,11 @@ name: Supabase keep-alive
 # a GitHub email telling you to unpause it.
 
 on:
-  schedule:
-    - cron: "17 6 * * 1,4"   # Mondays & Thursdays at 06:17 UTC (<= ~4 days apart)
+  # The scheduled run is disabled while the scenario-upload feature (the only
+  # thing that needs Supabase) is hidden. Re-enable by uncommenting the cron
+  # below once uploads are turned back on.
+  # schedule:
+  #   - cron: "17 6 * * 1,4"   # Mondays & Thursdays at 06:17 UTC
   workflow_dispatch: {}       # manual "Run workflow" button
 
 jobs:

@@ -11,6 +11,7 @@ This is a UI-layer module — unlike llm.py / store.py / tutors.py, it DOES impo
 Streamlit.
 """
 
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -136,9 +137,17 @@ def render_teacher():
         st.code(link, language=None)
         st.markdown(f"[Open the student laboratory ↗]({link})")
 
-    tab_builtin, tab_upload = st.tabs(
-        ["📚 Use a ready-made scenario", "⬆️ Upload your own"]
+    # The "Upload your own" tab writes to Supabase storage, which is disabled
+    # for now. Set ENABLE_SCENARIO_UPLOAD=true to bring the tab back.
+    _uploads_on = os.getenv("ENABLE_SCENARIO_UPLOAD", "false").strip().lower() in (
+        "1", "true", "yes", "on"
     )
+    if _uploads_on:
+        tab_builtin, tab_upload = st.tabs(
+            ["📚 Use a ready-made scenario", "⬆️ Upload your own"]
+        )
+    else:
+        tab_builtin = st.container()
 
     with tab_builtin:
         st.write(
@@ -157,38 +166,39 @@ def render_teacher():
             with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
                 show_summary(store.load(scenario_id))
 
-    with tab_upload:
-        st.write("Upload your own confidential dossier (.docx).")
-        uploaded_file = st.file_uploader(
-            "Choose the investigation dossier (.docx)", type=["docx"], key="teacher_upload"
-        )
-        if uploaded_file is not None:
-            signature = (uploaded_file.name, uploaded_file.size)
-            if st.session_state.get("upload_signature") != signature:
-                investigation = read_docx(uploaded_file)
-                ok, message = validate_investigation(investigation)
-                st.session_state["upload_signature"] = signature
-                if ok:
-                    try:
-                        st.session_state["upload_id"] = store.save(
-                            investigation, label=uploaded_file.name
-                        )
-                        st.session_state["upload_error"] = None
-                    except StoreUnavailable as error:
+    if _uploads_on:
+        with tab_upload:
+            st.write("Upload your own confidential dossier (.docx).")
+            uploaded_file = st.file_uploader(
+                "Choose the investigation dossier (.docx)", type=["docx"], key="teacher_upload"
+            )
+            if uploaded_file is not None:
+                signature = (uploaded_file.name, uploaded_file.size)
+                if st.session_state.get("upload_signature") != signature:
+                    investigation = read_docx(uploaded_file)
+                    ok, message = validate_investigation(investigation)
+                    st.session_state["upload_signature"] = signature
+                    if ok:
+                        try:
+                            st.session_state["upload_id"] = store.save(
+                                investigation, label=uploaded_file.name
+                            )
+                            st.session_state["upload_error"] = None
+                        except StoreUnavailable as error:
+                            st.session_state["upload_id"] = None
+                            st.session_state["upload_error"] = str(error)
+                    else:
                         st.session_state["upload_id"] = None
-                        st.session_state["upload_error"] = str(error)
-                else:
-                    st.session_state["upload_id"] = None
-                    st.session_state["upload_error"] = message
+                        st.session_state["upload_error"] = message
 
-            if st.session_state.get("upload_error"):
-                st.error(st.session_state["upload_error"])
-            elif st.session_state.get("upload_id"):
-                scenario_id = st.session_state["upload_id"]
-                st.success("✅ Dossier saved.")
-                show_link(scenario_id)
-                with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
-                    show_summary(store.load(scenario_id))
+                if st.session_state.get("upload_error"):
+                    st.error(st.session_state["upload_error"])
+                elif st.session_state.get("upload_id"):
+                    scenario_id = st.session_state["upload_id"]
+                    st.success("✅ Dossier saved.")
+                    show_link(scenario_id)
+                    with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
+                        show_summary(store.load(scenario_id))
 
     with st.expander("📖 Teacher Guide — how to use the Chemistry Lab"):
         try:
