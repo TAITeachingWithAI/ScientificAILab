@@ -1,0 +1,69 @@
+name: Supabase keep-alive
+
+# Prevents the free-tier Supabase project from auto-pausing (it pauses after
+# about 7 days of inactivity) by sending a small authenticated request on a
+# schedule. Each request counts as activity and resets the idle timer.
+#
+# Setup (one time): in the repo, go to
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+# and add these TWO secrets:
+#   SUPABASE_URL       the project URL, e.g. https://<ref>.supabase.co
+#                      (NOT the ...storage.supabase.co/storage/v1/s3 endpoint)
+#   SUPABASE_ANON_KEY  the project's anon / public API key
+#                      (Supabase dashboard -> Project Settings -> API)
+#
+# Nothing secret is stored in this file. You can also trigger it by hand from
+# the Actions tab ("Run workflow"). If the project is already paused, this run
+# FAILS on purpose so you get a GitHub email telling you to unpause it.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1,4"   # Mondays & Thursdays at 06:17 UTC (<= ~4 days apart)
+  workflow_dispatch: {}       # manual "Run workflow" button
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::Missing SUPABASE_URL or SUPABASE_ANON_KEY repo secret. See the header of this workflow file for setup."
+            exit 1
+          fi
+
+          url="${SUPABASE_URL%/}/rest/v1/"
+          echo "Pinging ${url}"
+
+          # -sS = quiet but show errors; capture body + status. The key is passed
+          # via headers only, so it never appears in the logs.
+          status=$(curl -sS -o /tmp/body.txt -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${url}" || echo "000")
+
+          echo "HTTP status: ${status}"
+
+          if grep -qi "paused" /tmp/body.txt; then
+            echo "::error::The Supabase project appears to be PAUSED. Unpause it in the Supabase dashboard."
+            head -c 300 /tmp/body.txt || true
+            exit 1
+          fi
+
+          case "${status}" in
+            2*|3*)
+              echo "Keep-alive OK (${status}). Idle timer reset." ;;
+            401|403)
+              echo "::warning::Reached the API but got ${status} (check SUPABASE_ANON_KEY). The request still counts as activity." ;;
+            000)
+              echo "::error::No response from Supabase (network/URL problem)."
+              exit 1 ;;
+            *)
+              echo "::error::Unexpected status ${status}."
+              head -c 300 /tmp/body.txt || true
+              exit 1 ;;
+          esac
