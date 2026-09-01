@@ -135,14 +135,20 @@ def _provider_config():
 
 
 def is_configured():
-    """True if the primary provider has everything it needs to run."""
-    try:
-        cfg = _provider_config()
-    except LabConfigError:
-        return False
-    if PROVIDER == "ollama":
-        return True
-    return bool(os.getenv(cfg["api_key_env"]))
+    """True if the primary provider OR any configured fallback has a usable key.
+
+    Being chain-aware means we can set a fast primary (e.g. Cerebras) whose key
+    is not present yet and still run on the fallback (e.g. Groq): the app reports
+    "configured", and each request automatically prefers whichever providers in
+    the chain actually have a key.
+    """
+    for provider, _model in _attempt_chain():
+        if provider == "ollama":
+            return True
+        cfg = PROVIDERS.get(provider)
+        if cfg and os.getenv(cfg["api_key_env"]):
+            return True
+    return False
 
 
 def _attempt_chain():
@@ -166,7 +172,15 @@ def _attempt_chain():
 
 
 def current_model():
-    """The (provider, model) that will be tried first — for display/transparency."""
+    """The (provider, model) that will actually be tried first — for display.
+
+    Skips leading providers that have no key, so the transparency note reflects
+    what really answers (e.g. Groq until a Cerebras key is added).
+    """
+    for provider, model in _attempt_chain():
+        cfg = PROVIDERS.get(provider)
+        if provider == "ollama" or (cfg and os.getenv(cfg["api_key_env"])):
+            return (provider, model)
     chain = _attempt_chain()
     return chain[0] if chain else (PROVIDER, MODEL)
 
