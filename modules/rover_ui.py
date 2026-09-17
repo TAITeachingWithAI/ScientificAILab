@@ -16,9 +16,9 @@ from pathlib import Path
 
 import streamlit as st
 
-from modules import llm, ui
+from modules import llm, tutors, ui
 from modules.rover_dossier_reader import read_rover_docx
-from modules.rover_prompts import build_system_prompt, redact_suggestions
+from modules.rover_prompts import build_standalone_prompt, build_system_prompt, redact_suggestions
 from modules.store import get_rover_store, validate_investigation, build_share_link
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -115,10 +115,29 @@ def _run_turn(investigation, history_key, message, transcript_label):
     history.append({"role": "assistant", "content": reply})
 
 
+def _run_elsewhere_expander(investigation):
+    with st.expander("⚡ Backup: run this mission in your own chatbot"):
+        st.markdown(
+            "If the app's AI is slow, rate-limited, or unavailable — this can "
+            "happen when many groups use it at once — you can run the exact same "
+            "mission in your own chatbot instead. You can still look at the site "
+            "photos and descriptions here; just do the chatting in a separate tab.\n\n"
+            "1. Open a **new, empty chat** in ChatGPT, Claude, Gemini, Copilot…\n"
+            "2. **Copy the whole prompt below** (copy button, top-right of the box).\n"
+            "3. Paste it as your **first message** and send it — it will introduce "
+            "the mission and ask which site to investigate.\n\n"
+            "In this mode the AI tracks the rover's energy and which sites have "
+            "been visited itself, narratively, instead of the app enforcing it — "
+            "a little less strict, but it keeps the activity going."
+        )
+        st.code(tutors.wrap_standalone(build_standalone_prompt(investigation)), language="text")
+
+
 def render_rover_lab(investigation, history_key):
     """Render the full Rover Lab session: overview/site imagery, energy
     gauge, site picker, experiment picker and general-question chat."""
     ui.ai_note()
+    _run_elsewhere_expander(investigation)
     _init_session(history_key, investigation)
     k = _keys(history_key)
 

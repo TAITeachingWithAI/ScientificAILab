@@ -49,8 +49,8 @@ one or two sites can be ruled out, but always leave genuine room for doubt —
 real fieldwork rarely gives absolute certainty from physical tests alone.
 
 3. Only report the result of an experiment on a site the student has
-already "visited" in this session (see CURRENT SESSION STATE below), and
-only for the exact experiment they asked for. Never give a result for an
+already "visited" in this session (see below for how "visited" is tracked in
+this conversation), and only for the exact experiment they asked for. Never give a result for an
 experiment or a site that was not specifically requested.
 
 4. If the student explicitly asks what a visited site's results could mean,
@@ -177,6 +177,163 @@ def _format_site(site, index, is_visited):
     )
     lines.append("Visited by the student this session: yes")
     return "\n".join(lines) + "\n"
+
+
+STANDALONE_ADDENDUM = """
+
+=============================
+STANDALONE MODE — READ CAREFULLY, THIS OVERRIDES RULE 16 ABOVE
+=============================
+
+You are being run directly in a general-purpose chat, as a backup for when
+the school's own app is unavailable or rate-limited. There is no mission
+control software here — nothing but you enforces the rover's rules. That
+makes this harder than usual, so follow these points with extra care:
+
+- NEVER INVENT SENSOR READINGS, DRILLING, OR DISCOVERIES. Every fact you
+  state about a site — its colour, its reaction to a test, what it
+  "contains" — must come only from the Known Properties / Experiment
+  Results given for that site below, or be explicitly marked as your
+  inference (rule 9). Do not narrate the rover doing things not asked for
+  (drilling, driving off, analysing on its own) or invent findings. If a
+  student's request goes beyond what's listed, say the measurement isn't
+  available rather than making one up.
+
+- ENERGY (best effort — do not let this distract you from the rule above):
+  start at the "Starting energy" value given below. Deduct "Site visit
+  cost" the FIRST time the student sends the rover to a given site, and
+  "Experiment cost" each time you report an experiment result. After such
+  an action, briefly note the remaining total (e.g. "[Energy: 61/100]").
+  Once energy reaches 0, refuse further site visits/experiments, but keep
+  answering general questions, which are always free. If you lose track of
+  the exact number over a long conversation, estimate reasonably rather
+  than stall — this matters far less than never inventing data above.
+
+- VISITED SITES: every site's data is included below for completeness, but
+  you must treat every site as NOT YET VISITED at the start of this
+  conversation. Do not use or reveal a site's known properties or experiment
+  results — even hint at them — until the student has explicitly sent the
+  rover there (which costs energy, above). Keep your own mental list of
+  which sites have been visited so far and stay consistent with it.
+
+- VISITING A SITE IS NOT THE SAME AS TESTING IT. When the student sends the
+  rover to a new site, that ONLY makes the site available for testing — it
+  does NOT run any experiment. Your entire reply to a "go to / send the rover
+  to <site>" message must be just: confirm arrival, repeat its visible
+  description (already known, not a measurement), note the energy deducted
+  — and nothing else. Do NOT list known properties or experiment results in
+  that same reply, even though you have that data below; those only ever
+  appear one at a time, each in response to its own explicit, separate
+  experiment request (rule 3), never bundled with an arrival message or with
+  each other. If you catch yourself about to list multiple properties or
+  results in one reply, stop and cut it down to what was actually asked.
+
+- DETECTING AN EXPERIMENT REQUEST: ignore the literal example message format
+  in rule 6a — there is no fixed format here. Instead, treat any message
+  where the student names ONE specific test (from the Available Experiments
+  list below) for a specific visited site as an EXPERIMENT RESULT request
+  (rule 6a's terse, one-line-no-explanation reply style still applies) —
+  report only that one test's result, never others. Free-form questions,
+  including "what could this be", are rule 6b — general chemistry questions,
+  and questions about a visited site's results, get a fuller answer.
+
+- START THE CONVERSATION by briefly introducing the mission (one short
+  paragraph, using the Mission Briefing below) and naming the candidate
+  sites so the student can choose one, then wait for their reply. Don't
+  reveal any site's data yet — that only happens once it's visited, per the
+  rule above.
+"""
+
+
+def _format_site_standalone(site, index):
+    # Unlike _format_site, there is no server-side app to withhold an
+    # unvisited site's data here — the whole prompt is set once, up front.
+    # So every site's data is included, and STANDALONE_ADDENDUM instructs the
+    # model to withhold/ignore it until that site is narratively "visited".
+    # This is a real (if modest) reduction in leak-safety versus the app's
+    # structural guarantee — an accepted trade-off for a backup meant to run
+    # on a stronger, better-instruction-following model of the student's own
+    # choosing, not the shared free-tier one the app itself uses.
+    lines = [f"--- Site {index}: {site.get('name', '(unnamed site)')} ---"]
+    lines.append(f"Visible description: {site.get('description') or '(not specified)'}")
+    lines.append("Known properties (do not use until this site has been visited):")
+    lines.append(_format_dict(site.get("known_properties") or {}).rstrip("\n") or "(none)")
+    lines.append(
+        "Experiment results — use EXACTLY, word for word, once requested for "
+        "a visited site (do not use until then):"
+    )
+    lines.append(
+        _format_dict(site.get("experiment_results") or {}).rstrip("\n") or "(none provided — infer)"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def build_standalone_prompt(investigation):
+    """
+    Self-contained version of the rover prompt for pasting into a student's
+    own chatbot (ChatGPT, Claude, Gemini, ...) — a backup for when the app's
+    shared AI is unavailable or rate-limited. Unlike build_system_prompt,
+    this has no per-turn `state`: there's no app around it to track energy or
+    which sites have been visited, so the prompt itself (STANDALONE_ADDENDUM)
+    asks the model to self-track both across the conversation.
+    """
+    rover_cfg = investigation.get("rover") or {}
+
+    prompt = ROVER_LABORATORY_RULES
+    prompt += STANDALONE_ADDENDUM
+
+    prompt += "\n"
+    prompt += "=============================\n"
+    prompt += "PLANET INFORMATION\n"
+    prompt += "=============================\n\n"
+    prompt += _format_dict(investigation.get("planet") or {})
+
+    prompt += "\n"
+    prompt += "=============================\n"
+    prompt += "MISSION BRIEFING\n"
+    prompt += "=============================\n\n"
+    prompt += (investigation.get("mission_briefing") or "(not specified)") + "\n"
+
+    prompt += "\n"
+    prompt += "=============================\n"
+    prompt += "ROVER ENERGY (self-tracked — see STANDALONE MODE above)\n"
+    prompt += "=============================\n\n"
+    prompt += f"Starting energy: {rover_cfg.get('starting_energy', 100)}\n"
+    prompt += f"Site visit cost: {rover_cfg.get('site_visit_cost', 10)}\n"
+    prompt += f"Experiment cost: {rover_cfg.get('experiment_cost', 15)}\n"
+
+    prompt += "\n"
+    prompt += "=============================\n"
+    prompt += "CANDIDATE SAMPLING SITES (all included — see STANDALONE MODE above)\n"
+    prompt += "=============================\n\n"
+    sites = investigation.get("sites") or []
+    for i, site in enumerate(sites, start=1):
+        prompt += _format_site_standalone(site, i)
+        prompt += "\n"
+
+    prompt += "=============================\n"
+    prompt += "AVAILABLE EXPERIMENTS\n"
+    prompt += "=============================\n\n"
+    for experiment in investigation.get("experiments") or []:
+        prompt += f"- {experiment}\n"
+
+    prompt += "\n"
+    prompt += "=============================\n"
+    prompt += "AI BEHAVIOUR\n"
+    prompt += "=============================\n\n"
+    prompt += _format_dict(investigation.get("ai_behaviour") or {})
+
+    prompt += "\n"
+    prompt += CRITICAL_REMINDER
+    prompt += (
+        "\n4. Standalone mode only: did your draft reply to a site visit "
+        "include any known properties or experiment results? If yes, delete "
+        "them — arrival alone never reveals measurements, only a specific "
+        "experiment request does, one at a time. Did you track and note the "
+        "energy cost of this action? If not, add it."
+    )
+
+    return prompt
 
 
 def build_system_prompt(investigation, state):
