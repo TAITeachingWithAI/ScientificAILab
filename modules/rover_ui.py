@@ -12,6 +12,7 @@ DOES import Streamlit.
 """
 
 import base64
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -19,7 +20,12 @@ import streamlit as st
 from modules import llm, tutors, ui
 from modules.rover_dossier_reader import read_rover_docx
 from modules.rover_prompts import build_standalone_prompt, build_system_prompt, redact_suggestions
-from modules.store import get_rover_store, validate_investigation, build_share_link
+from modules.store import (
+    get_rover_store,
+    validate_investigation,
+    build_share_link,
+    StoreUnavailable,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -314,9 +320,17 @@ def render_teacher():
         st.code(link, language=None)
         st.markdown(f"[Open the student rover lab ↗]({link})")
 
-    tab_builtin, tab_upload = st.tabs(
-        ["📚 Use a ready-made scenario", "⬆️ Upload your own"]
+    # The "Upload your own" tab writes to Supabase storage, which is disabled
+    # for now. Set ENABLE_SCENARIO_UPLOAD=true to bring the tab back.
+    _uploads_on = os.getenv("ENABLE_SCENARIO_UPLOAD", "false").strip().lower() in (
+        "1", "true", "yes", "on"
     )
+    if _uploads_on:
+        tab_builtin, tab_upload = st.tabs(
+            ["📚 Use a ready-made scenario", "⬆️ Upload your own"]
+        )
+    else:
+        tab_builtin = st.container()
 
     with tab_builtin:
         st.write(
@@ -335,39 +349,44 @@ def render_teacher():
             with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
                 show_summary(load_scenario(scenario_id))
 
-    with tab_upload:
-        st.write(
-            "Upload your own confidential dossier (.docx) — see "
-            "`Dossier_Rover_Template.docx` and `ROVER_TEACHER_GUIDE.md` in the "
-            "project repository for the format, including how to embed the "
-            "overview and site photos directly in the Word document."
-        )
-        uploaded_file = st.file_uploader(
-            "Choose the rover dossier (.docx)", type=["docx"], key="rover_teacher_upload"
-        )
-        if uploaded_file is not None:
-            signature = (uploaded_file.name, uploaded_file.size)
-            if st.session_state.get("rover_upload_signature") != signature:
-                investigation = read_rover_docx(uploaded_file)
-                ok, message = validate_investigation(investigation)
-                st.session_state["rover_upload_signature"] = signature
-                if ok:
-                    st.session_state["rover_upload_id"] = store.save(
-                        investigation, label=uploaded_file.name
-                    )
-                    st.session_state["rover_upload_error"] = None
-                else:
-                    st.session_state["rover_upload_id"] = None
-                    st.session_state["rover_upload_error"] = message
+    if _uploads_on:
+        with tab_upload:
+            st.write(
+                "Upload your own confidential dossier (.docx) — see "
+                "`Dossier_Rover_Template.docx` and `ROVER_TEACHER_GUIDE.md` in the "
+                "project repository for the format, including how to embed the "
+                "overview and site photos directly in the Word document."
+            )
+            uploaded_file = st.file_uploader(
+                "Choose the rover dossier (.docx)", type=["docx"], key="rover_teacher_upload"
+            )
+            if uploaded_file is not None:
+                signature = (uploaded_file.name, uploaded_file.size)
+                if st.session_state.get("rover_upload_signature") != signature:
+                    investigation = read_rover_docx(uploaded_file)
+                    ok, message = validate_investigation(investigation)
+                    st.session_state["rover_upload_signature"] = signature
+                    if ok:
+                        try:
+                            st.session_state["rover_upload_id"] = store.save(
+                                investigation, label=uploaded_file.name
+                            )
+                            st.session_state["rover_upload_error"] = None
+                        except StoreUnavailable as error:
+                            st.session_state["rover_upload_id"] = None
+                            st.session_state["rover_upload_error"] = str(error)
+                    else:
+                        st.session_state["rover_upload_id"] = None
+                        st.session_state["rover_upload_error"] = message
 
-            if st.session_state.get("rover_upload_error"):
-                st.error(st.session_state["rover_upload_error"])
-            elif st.session_state.get("rover_upload_id"):
-                scenario_id = st.session_state["rover_upload_id"]
-                st.success("✅ Dossier saved.")
-                show_link(scenario_id)
-                with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
-                    show_summary(load_scenario(scenario_id))
+                if st.session_state.get("rover_upload_error"):
+                    st.error(st.session_state["rover_upload_error"])
+                elif st.session_state.get("rover_upload_id"):
+                    scenario_id = st.session_state["rover_upload_id"]
+                    st.success("✅ Dossier saved.")
+                    show_link(scenario_id)
+                    with st.expander("🔍 Full scenario details (confidential — includes the answer)"):
+                        show_summary(load_scenario(scenario_id))
 
     with st.expander("📖 Teacher Guide — how to use the Rover Lab"):
         try:

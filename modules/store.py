@@ -37,6 +37,36 @@ from modules.dossier_reader import read_docx
 load_dotenv()
 
 
+class StoreUnavailable(RuntimeError):
+    """The object store could not be reached (e.g. Supabase paused, or bad keys)."""
+
+
+def _store_unavailable(error):
+    """Translate a low-level S3 error into a friendly, actionable StoreUnavailable."""
+    code = ""
+    status = None
+    try:
+        code = error.response.get("Error", {}).get("Code", "")
+        status = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    except AttributeError:
+        pass  # not a ClientError (e.g. a connection/endpoint error)
+
+    if str(status) == "540" or str(code) == "540":
+        detail = (
+            "the Supabase project appears to be **paused** (on the free tier it pauses "
+            "after about a week of inactivity). Unpause it in the Supabase dashboard, "
+            "then try again."
+        )
+    elif str(code) in ("SignatureDoesNotMatch", "AccessDenied", "InvalidAccessKeyId") or status == 403:
+        detail = (
+            "the storage access keys look invalid or expired. Regenerate the S3 access "
+            "keys in the Supabase dashboard and update them in the app's secrets / `.env`."
+        )
+    else:
+        detail = "the storage service could not be reached just now. Please try again shortly."
+    return StoreUnavailable("Scenario storage is currently unavailable: " + detail)
+
+
 # Project root = the folder that contains app.py (one level above /modules).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -251,12 +281,15 @@ class S3ScenarioStore(BaseScenarioStore):
     def save(self, investigation, label=None):
         scenario_id = _new_id(self.upload_prefix)
         payload = _make_payload(investigation, label)
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=self._key(scenario_id),
-            Body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            ContentType="application/json",
-        )
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=self._key(scenario_id),
+                Body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                ContentType="application/json",
+            )
+        except Exception as error:  # noqa: BLE001 - surface a friendly message
+            raise _store_unavailable(error) from error
         return scenario_id
 
     def _upload_by_id(self, scenario_id):
@@ -270,7 +303,9 @@ class S3ScenarioStore(BaseScenarioStore):
             code = error.response.get("Error", {}).get("Code", "")
             if code in ("NoSuchKey", "404", "NoSuchBucket"):
                 return None
-            raise
+            raise _store_unavailable(error) from error
+        except Exception as error:  # noqa: BLE001 - connection / endpoint problems
+            raise _store_unavailable(error) from error
         payload = json.loads(obj["Body"].read().decode("utf-8"))
         return payload.get("investigation")
 

@@ -61,10 +61,12 @@ PROVIDERS = {
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
         "api_key_env": "GROQ_API_KEY",
-        # Plain instruct model that reliably keeps the answer hidden. Reasoning
-        # models on Groq (gpt-oss, qwen3) tend to leak the sample identity or
-        # dump their <think> reasoning, so they are NOT used here.
-        "default_model": "llama-3.3-70b-versatile",
+        # Groq decommissioned all the Llama models (Aug 2026). gpt-oss is
+        # OpenAI's open model; on Groq it returns clean replies (its reasoning
+        # stays in a separate channel, not dumped into the answer). If this id
+        # is retired too, the app auto-discovers a live model (see
+        # _discover_chat_model), so it keeps working.
+        "default_model": "openai/gpt-oss-120b",
     },
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -99,7 +101,24 @@ PROVIDER = os.getenv("LAB_PROVIDER", "groq").strip().lower()
 MODEL = os.getenv("LAB_MODEL", "").strip()  # empty -> use the provider default
 MAX_TOKENS = int(os.getenv("LAB_MAX_TOKENS", "700"))
 HISTORY_TURNS = int(os.getenv("LAB_HISTORY_TURNS", "6"))
-FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:llama-3.1-8b-instant")
+FALLBACKS = os.getenv("LAB_FALLBACKS", "groq:openai/gpt-oss-20b")
+
+# Fail fast: if a call hangs (slow model / rate-limit), give up after TIMEOUT
+# seconds and try the next fallback, instead of blocking for minutes and
+# letting the hosting platform reset the session (which loses the student's
+# progress). Keep retries low so a stuck call fails quickly.
+# Fail fast on a truly hung call, but leave enough headroom for a legitimately
+# slow reply: on the Groq free tier a normal gpt-oss answer can still take
+# ~50 s under load, so a tight timeout would cut off valid replies.
+TIMEOUT = float(os.getenv("LAB_TIMEOUT", "90"))
+MAX_RETRIES = int(os.getenv("LAB_MAX_RETRIES", "1"))
+
+# gpt-oss models "think" before answering. reasoning_effort ("low"/"medium"/
+# "high") trades depth for speed, but on Groq the latency is dominated by
+# server load, and forcing "low" was observed to hurt quality (the model runs
+# ahead and role-plays the student). So leave it UNSET by default (let the model
+# choose); set LAB_REASONING_EFFORT if you want to experiment with speed.
+REASONING_EFFORT = os.getenv("LAB_REASONING_EFFORT", "").strip()
 
 
 class LabConfigError(RuntimeError):
@@ -116,14 +135,20 @@ def _provider_config():
 
 
 def is_configured():
-    """True if the primary provider has everything it needs to run."""
-    try:
-        cfg = _provider_config()
-    except LabConfigError:
-        return False
-    if PROVIDER == "ollama":
-        return True
-    return bool(os.getenv(cfg["api_key_env"]))
+    """True if the primary provider OR any configured fallback has a usable key.
+
+    Being chain-aware means we can set a fast primary (e.g. Cerebras) whose key
+    is not present yet and still run on the fallback (e.g. Groq): the app reports
+    "configured", and each request automatically prefers whichever providers in
+    the chain actually have a key.
+    """
+    for provider, _model in _attempt_chain():
+        if provider == "ollama":
+            return True
+        cfg = PROVIDERS.get(provider)
+        if cfg and os.getenv(cfg["api_key_env"]):
+            return True
+    return False
 
 
 def _attempt_chain():
@@ -146,13 +171,79 @@ def _attempt_chain():
     return chain
 
 
+def current_model():
+    """The (provider, model) that will actually be tried first — for display.
+
+    Skips leading providers that have no key, so the transparency note reflects
+    what really answers (e.g. Groq until a Cerebras key is added).
+    """
+    for provider, model in _attempt_chain():
+        cfg = PROVIDERS.get(provider)
+        if provider == "ollama" or (cfg and os.getenv(cfg["api_key_env"])):
+            return (provider, model)
+    chain = _attempt_chain()
+    return chain[0] if chain else (PROVIDER, MODEL)
+
+
 def _client_for(provider):
     """Build an OpenAI-compatible client for a provider, or None if no key."""
     cfg = PROVIDERS[provider]
     api_key = os.getenv(cfg["api_key_env"]) or ("ollama" if provider == "ollama" else None)
     if not api_key:
         return None
-    return OpenAI(api_key=api_key, base_url=cfg["base_url"])
+    return OpenAI(
+        api_key=api_key,
+        base_url=cfg["base_url"],
+        timeout=TIMEOUT,
+        max_retries=MAX_RETRIES,
+    )
+
+
+# Cache of a model auto-discovered from a provider's live model list, used as a
+# last resort when the configured models have been decommissioned.
+_discovered_model = {}
+
+# Substrings that mark a model as NOT a general chat model (speech, guards, ...).
+_NON_CHAT = ("whisper", "guard", "orpheus", "tts", "embed", "safeguard",
+             "moderation", "compound")
+# Preference order when auto-picking (best general chat models first).
+_PREFERRED = ("gpt-oss-120b", "gpt-oss-20b", "llama-3.3", "llama-4", "llama-3.1",
+              "qwen", "mixtral", "gemma", "gpt-4o", "gpt-5")
+
+
+def _discover_chat_model(provider):
+    """
+    Ask the provider which models it currently serves and pick a general chat
+    model. Cached per provider. Makes the app self-healing: if the configured
+    models are decommissioned, it routes to whatever is live instead of failing.
+    """
+    if provider in _discovered_model:
+        return _discovered_model[provider]
+    model = None
+    client = _client_for(provider)
+    if client is not None:
+        try:
+            ids = [m.id for m in client.models.list().data]
+            candidates = [i for i in ids if not any(b in i.lower() for b in _NON_CHAT)]
+            for pref in _PREFERRED:
+                match = next((i for i in candidates if pref in i.lower()), None)
+                if match:
+                    model = match
+                    break
+            if model is None and candidates:
+                model = candidates[0]
+        except Exception:  # noqa: BLE001
+            model = None
+    _discovered_model[provider] = model
+    return model
+
+
+def _create(client, model, messages, cap):
+    """One chat completion, adding reasoning_effort when configured (gpt-oss)."""
+    kwargs = dict(model=model, messages=messages, temperature=0.4, max_tokens=cap)
+    if REASONING_EFFORT:
+        kwargs["extra_body"] = {"reasoning_effort": REASONING_EFFORT}
+    return client.chat.completions.create(**kwargs)
 
 
 def _complete(system_prompt, message, history=None, max_tokens=None, history_turns=None):
@@ -183,12 +274,7 @@ def _complete(system_prompt, message, history=None, max_tokens=None, history_tur
             continue  # no key for this provider — skip it
         tried_any = True
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.4,
-                max_tokens=cap,
-            )
+            response = _create(client, model, messages, cap)
             return response.choices[0].message.content
         except Exception as error:  # noqa: BLE001 - try the next fallback
             errors.append(f"{provider}/{model}: {error}")
@@ -199,6 +285,19 @@ def _complete(system_prompt, message, history=None, max_tokens=None, history_tur
             f"No API key found for provider '{PROVIDER}' (or any fallback). "
             f"Set {_provider_config()['api_key_env']} in your .env file."
         )
+
+    # Last resort: the configured models may have been decommissioned. Ask the
+    # primary provider what it currently serves and retry with a live model.
+    discovered = _discover_chat_model(PROVIDER)
+    if discovered:
+        client = _client_for(PROVIDER)
+        if client is not None:
+            try:
+                response = _create(client, discovered, messages, cap)
+                return response.choices[0].message.content
+            except Exception as error:  # noqa: BLE001
+                errors.append(f"{PROVIDER}/{discovered} (auto-discovered): {error}")
+
     raise RuntimeError(
         "All AI providers failed (they may be rate-limited — try again shortly).\n"
         + "\n".join(errors)
