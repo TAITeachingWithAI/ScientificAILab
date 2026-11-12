@@ -21,25 +21,38 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "tutor_prompts"
 
 
 TUTORS = {
-    "physics_emmy": {
+    # Emmy, the research mentor. The prompt files are exact copies of the ones in
+    # the TAI_materials repo (same file names); update them there and copy them
+    # here. Each file is a self-contained "paste into your own chatbot" prompt;
+    # the greeting is read from its "Opening line" section, so it never drifts.
+    # The first version of Emmy is archived in tutor_prompts/archive/.
+    "emmy_exoplanet": {
         "kind": "socratic",
-        "title": "Emmy — Physics Research Tutor",
+        "title": "Emmy: research mentor for the exoplanet lesson",
         "icon": "🔭",
         "description": (
-            "A Socratic tutor for physics experiments. Emmy guides you through the "
-            "scientific method for an experiment of your choice — one question at a "
-            "time. She won't hand you answers, but you can always ask her for a hint."
+            "Emmy guides your group through your own model-exoplanet transit "
+            "experiment by asking questions, one at a time, and asks you to think "
+            "about how real science works. She won't hand you answers, but you can "
+            "always ask her for a hint."
         ),
-        "prompt_file": "physics_emmy.md",
-        "greeting": (
-            "**Stage 1/5: Research Question. Status: draft. Next: Hypothesis.**\n\n"
-            "Hi, I'm Emmy, your scientific mentor. Whenever you're stuck, just ask "
-            "me for help or a small hint — otherwise I'll keep nudging you with "
-            "questions so you do the thinking. What physics experiment are you "
-            "investigating?"
+        "prompt_file": "Emmy_prompt_exoplanet_lesson.txt",
+        "max_tokens": 900,
+        "history_turns": 12,
+    },
+    "emmy_any_experiment": {
+        "kind": "socratic",
+        "title": "Emmy: research mentor for any experiment",
+        "icon": "🔎",
+        "description": (
+            "Emmy helps you with your own investigation in any school subject, from "
+            "your first question to your conclusion, and helps you think like a "
+            "scientist along the way. You can also use her to reflect on a project "
+            "you have already finished."
         ),
-        "max_tokens": 800,
-        "history_turns": 10,
+        "prompt_file": "Emmy_prompt_any_experiment.txt",
+        "max_tokens": 900,
+        "history_turns": 12,
     },
     "history_debate": {
         "kind": "roleplay",
@@ -139,14 +152,50 @@ def list_tutors():
     ]
 
 
+def _read_prompt_file(tutor_id):
+    return (PROMPTS_DIR / TUTORS[tutor_id]["prompt_file"]).read_text(encoding="utf-8")
+
+
+def _has_own_header(text):
+    """True for prompt files written to be pasted into any chatbot as they are."""
+    return text.lstrip().startswith("Adopt the role")
+
+
+def _opening_line(text):
+    """The text of a prompt file's '## Opening line' section (used as greeting)."""
+    lines = text.splitlines()
+    start = next((i for i, l in enumerate(lines) if l.startswith("## Opening line")), None)
+    if start is None:
+        return None
+    body = []
+    for line in lines[start + 1:]:
+        if line.startswith("=====") or line.startswith("## "):
+            break
+        body.append(line)
+    return "\n".join(body).strip() or None
+
+
 def get_tutor(tutor_id):
-    return TUTORS.get(tutor_id)
+    tutor = TUTORS.get(tutor_id)
+    if tutor is not None and "greeting" not in tutor and tutor.get("kind", "socratic") == "socratic":
+        tutor["greeting"] = _opening_line(_read_prompt_file(tutor_id)) or "Hi! What are you working on?"
+    return tutor
 
 
 def load_prompt(tutor_id):
-    """Read the tutor's prompt file (a full prompt, or a $placeholder template)."""
-    tutor = TUTORS[tutor_id]
-    return (PROMPTS_DIR / tutor["prompt_file"]).read_text(encoding="utf-8")
+    """
+    The tutor's system prompt (a full prompt, or a $placeholder template).
+    Self-contained chatbot prompts start with a short "adopt this role" header
+    meant for pasting; inside the app that header is dropped, because the app
+    already shows the greeting itself.
+    """
+    text = _read_prompt_file(tutor_id)
+    if _has_own_header(text):
+        marker = "\n-----"
+        cut = text.find(marker)
+        if cut != -1:
+            text = text[text.find("\n", cut + 1) + 1:].lstrip()
+    return text
 
 
 def build_prompt(tutor_id, values):
@@ -182,4 +231,7 @@ def wrap_standalone(prompt_text):
 
 def load_standalone(tutor_id):
     """Self-contained version of a fixed (socratic) tutor's prompt."""
-    return wrap_standalone(load_prompt(tutor_id))
+    text = _read_prompt_file(tutor_id)
+    if _has_own_header(text):      # already written to be pasted as it is
+        return text
+    return wrap_standalone(text)

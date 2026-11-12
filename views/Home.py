@@ -11,8 +11,9 @@ st.markdown(
 Welcome to the **Scientific AI Laboratory** — a set of AI-powered activities
 for science teaching.
 
-- 🎓 **AI Tutors** — chat with a subject tutor (e.g. *Emmy*, the Socratic physics
-  research guide) that walks you through an experiment step by step.
+- 🎓 **AI Tutors** — chat with a tutor, for example *Emmy*, the research mentor
+  who guides you through your own investigation with questions and helps you
+  think like a scientist.
 - 🧪 **Chemistry Lab** — identify an unknown sample by designing experiments.
   Inside, choose **Student** (pick a scenario, or open your teacher's link) or
   **Teacher** (set up and share an investigation).
