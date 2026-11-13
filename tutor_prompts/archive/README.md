@@ -8,7 +8,7 @@ The first version of Emmy (used until November 2026): a Socratic physics tutor
 that guided students through a fixed five-stage scientific method (research
 question, hypothesis, plan, data, analysis) with locked stage gates. It was
 replaced by the two Nature of Science versions of Emmy
-(`Emmy_prompt_exoplanet_lesson.txt` and `Emmy_prompt_any_experiment.txt`).
+(`Physics_Emmy_prompt.txt` and `Emmy_prompt_any_experiment.txt`).
 
 To bring it back, move the file back to `tutor_prompts/` and add this entry to
 `TUTORS` in `modules/tutors.py`:

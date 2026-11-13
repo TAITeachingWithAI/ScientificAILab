@@ -36,7 +36,7 @@ TUTORS = {
             "about how real science works. She won't hand you answers, but you can "
             "always ask her for a hint."
         ),
-        "prompt_file": "Emmy_prompt_exoplanet_lesson.txt",
+        "prompt_file": "Physics_Emmy_prompt.txt",
         "max_tokens": 900,
         "history_turns": 12,
     },
